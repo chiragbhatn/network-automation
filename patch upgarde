@@ -2,7 +2,6 @@ import paramiko
 import time
 from datetime import datetime
 import concurrent.futures
-from paramiko import ssh_exception  # Import the SSHException module
 
 start_time = datetime.now()
 
@@ -22,34 +21,40 @@ def execute_ssh(ip):
 
         for command in command_list:
             comm.send(f"{command}\n")
-            time.sleep(2)  # Add a 2-second delay for all commands
-
+            if command.startswith("get") or command.startswith("Y"):
+                time.sleep(45)  # Add a 45-second delay for 'get' and 'Y' commands
+            else:
+                time.sleep(5)  # Add a 5-second delay for other commands
             output = comm.recv(65535)
             output = output.decode("utf-8")
             logs = output.split("xxxxx")
             logs1 += ''.join(logs)
 
-        with open("{}.txt".format(ip), "w") as f:
-            f.write(logs1)
-
-        # Check the startup system software line
-        if "R021SPH250.pat" in logs1:
-            with open("ok.txt", "a") as ok_file:
-                ok_file.write(ip + "\n")
-        else:
-            with open("notok.txt", "a") as notok_file:
-                notok_file.write(ip + "\n")
+        with open("output.txt", "a") as output_file:
+            output_file.write(f"IP: {ip}\n")
+            output_file.write(logs1)
+            output_file.write("*" * 100 + "\n")  # Add 100 asterisks after the output
 
     except paramiko.AuthenticationException as e:
         error_message = f"Authentication failed for {ip}: {e}\n"
         print(error_message)
         authentication_failed_file.write(error_message)
         total_errors += 1
-    except ssh_exception.SSHException as e:
-        error_message = f"Connection failed for {ip}: {e}\n"
-        print(error_message)
-        authentication_failed_file.write(error_message)
-        total_errors += 1
+    except paramiko.SSHException as e:
+        if "No space left on device" in str(e):
+            error_message = f"Insufficient storage space for {ip}: {e}\n"
+            print(error_message)
+            with open("Insufficient_Storage.txt", "a") as storage_file:
+                storage_file.write(error_message)
+            total_errors += 1
+        elif "Unable to connect to port 22" in str(e):
+            return total_errors
+        else:
+            error_message = f"Device down for {ip}: {e}\n"
+            print(error_message)
+            with open("Device_down.txt", "a") as device_down_file:
+                device_down_file.write(error_message)
+            total_errors += 1
     except Exception as ex:
         error_message = f"An error occurred with {ip}: {ex}\n"
         print(error_message)
