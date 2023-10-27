@@ -30,8 +30,10 @@ def execute_ssh(ip):
             logs = output.split("xxxxx")
             logs1 += ''.join(logs)
 
-        with open("{}.txt".format(ip), "w") as f:
+        with open("output.txt", "a") as f:  # Append results to a single output file
+            f.write(f"IP: {ip}\n")
             f.write(logs1)
+            f.write("*" * 100 + "\n")  # Add 100 asterisks after the output
 
     except paramiko.AuthenticationException as e:
         error_message = f"Authentication failed for {ip}: {e}\n"
@@ -61,6 +63,7 @@ def execute_ssh(ip):
         total_errors += 1
     finally:
         conn.close()
+
     return total_errors
 
 # Configuration
