@@ -29,8 +29,10 @@ def execute_ssh(ip):
             logs = output.split("xxxxx")
             logs1 += ''.join(logs)
 
-        with open("{}.txt".format(ip), "w") as f:
-            f.write(logs1)
+        with open("output.txt", "a") as output_file:
+            output_file.write(f"IP: {ip}\n")
+            output_file.write(logs1)
+            output_file.write("*" * 100 + "\n")  # Add 100 asterisks after the output
 
         # Check the startup system software line
         if "r022sph150.pat" in logs1:
