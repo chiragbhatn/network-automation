@@ -29,8 +29,10 @@ def execute_ssh(ip):
             logs = output.split("xxxxx")
             logs1 += ''.join(logs)
 
-        with open("{}.txt".format(ip), "w") as f:
+        with open("output.txt", "a") as f:  # Append results to a single output file
+            f.write(f"IP: {ip}\n")
             f.write(logs1)
+            f.write("*" * 100 + "\n")
 
         # Check the startup system software line
         if "startup system software" in logs1 and "r022" in logs1:
