@@ -40,7 +40,7 @@ def execute_ssh(ip):
                 while True:
                     output += comm.recv(65535).decode("utf-8")
                     if "Error: Failed to run this command because of insufficient storage space." in output:
-                        with open("insufficient_storage.txt", "a") as storage_file:
+                        with open("Errors.txt", "a") as storage_file:
                             storage_file.write(f"Insufficient storage for {ip}: {command}\n")
                         break
                     elif "already exists but it is smaller than the remote file" in output:
@@ -59,7 +59,7 @@ def execute_ssh(ip):
                     if "Transfer complete" in output:
                         break
                     if "Error: Failed to run this command because of insufficient storage space." in output:
-                        with open("insufficient_storage.txt", "a") as storage_file:
+                        with open("Errors.txt", "a") as storage_file:
                             storage_file.write(f"Insufficient storage for {ip}: {command}\n")
                         break
                     elif "The size of file" in output:
@@ -68,7 +68,7 @@ def execute_ssh(ip):
                         break
                     elif "Error: Unrecognized command found" in output:
                         # Handle "Unrecognized command" error and break
-                        with open("error_Y_command.txt", "a") as error_file:
+                        with open("Errors.txt", "a") as error_file:
                             error_file.write(f"Unrecognized command for {ip}: {command}\n")
                         break
             elif command.strip() == "bye":
@@ -94,7 +94,7 @@ def execute_ssh(ip):
                         break
                     elif "Error: Unrecognized command found" in output:
                         # Handle "Unrecognized command" error and break
-                        with open("error_Y_command.txt", "a") as error_file:
+                        with open("Errors.txt", "a") as error_file:
                             error_file.write(f"Unrecognized command for {ip}: {command}\n")
                         break
 
@@ -108,12 +108,12 @@ def execute_ssh(ip):
         else:
             error_message = f"Device down for {ip}: {e}\n"
             print(error_message)
-            with open("Device_down.txt", "a") as device_down_file:
+            with open("Errors.txt", "a") as device_down_file:
                 device_down_file.write(error_message)
     except Exception as ex:
         error_message = f"An error occurred with {ip}: {ex}\n"
         print(error_message)
-        with open("Device_down.txt", "a") as device_down_file:
+        with open("Errors.txt", "a") as device_down_file:
             device_down_file.write(error_message)
     finally:
         conn.close()
