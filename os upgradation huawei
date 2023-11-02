@@ -78,8 +78,14 @@ def execute_ssh(ip):
                         break
             elif command.startswith("startup system-software"):
                 while True:
-                    time.sleep(20)  # 2-second delay
-                    break
+                    output += comm.recv(65535).decode("utf-8")
+                    if "Succeeded in setting the software" in output:
+                        break
+                    elif "Error: Software package verification failed. Please upload again." in output:
+                        time.sleep(2)
+                        with open("Errors.txt", "a") as storage_file:
+                            storage_file.write(f"startup issue for {ip}: {command}\n")
+                        break
 
             elif command.strip() == "save":
                 while True:
