@@ -1,0 +1,114 @@
+import paramiko
+import time
+from datetime import datetime
+import concurrent.futures
+
+start_time = datetime.now()
+
+# Function to execute SSH commands for a single IP
+def execute_ssh(ip):
+    logs = []
+    logs1 = ""  # Initialize logs1 to an empty string
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+        comm.send("s 0 t \n")
+
+        for command in command_list:
+            comm.send(f"{command}\n")
+            output = ""
+
+            if command.startswith("schedule"):
+                while True:
+                    output += comm.recv(65535).decode("utf-8")
+                    if "confirm?[Y/N]" in output:
+                        break
+
+            elif command.strip() == "Y":
+                while True:
+                    output += comm.recv(65535).decode("utf-8")
+                    if "acc" in output:
+                        break
+                    elif "Save the configuration successfully" in output:
+                        break
+
+            elif command.strip() == "save":
+                while True:
+                    output += comm.recv(65535).decode("utf-8")
+                    if "Are you sure to continue?[Y/N]Y" in output:
+                        break
+
+            # Append the output to logs1
+            logs1 += output
+
+        # Now, outside the loop, you can write logs1 to the output file
+        with open("output.txt", "a") as f:
+            f.write(f"IP: {ip}\n")
+            f.write(logs1)
+            f.write("*" * 100 + "\n")
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        authentication_failed_file.write(error_message)
+        total_errors += 1
+    except paramiko.SSHException as e:
+        if "No space left on device" in str(e):
+            error_message = f"Insufficient storage space for {ip}: {e}\n"
+            print(error_message)
+            with open("Insufficient_Storage.txt", "a") as storage_file:
+                storage_file.write(error_message)
+            total_errors += 1
+        elif "Unable to connect to port 22" in str(e):
+            return total_errors
+        else:
+            error_message = f"Device down for {ip}: {e}\n"
+            print(error_message)
+            with open("Device_down.txt", "a") as device_down_file:
+                device_down_file.write(error_message)
+            total_errors += 1
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        print(error_message)
+        with open("Device_down.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+    finally:
+        conn.close()
+
+    return total_errors
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+c = open("Command_List.txt", "r")
+command_list = c.read().split("\n")
+
+d = open("Device_List.txt", "r")
+hosts = d.read().split("\n")
+
+# Create files to store errors and success information
+authentication_failed_file = open("Authentication_failed.txt", "w")
+total_ips = len(hosts)
+total_errors = 0
+
+# Run SSH connections concurrently
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(execute_ssh, hosts)
+    for result in results:
+        total_errors += result
+
+# Calculate success percentage
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+end_time = datetime.now()
+print(end_time - start_time)
