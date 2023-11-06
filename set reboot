@@ -34,13 +34,20 @@ def execute_ssh(ip):
                     output += comm.recv(65535).decode("utf-8")
                     if "acc" in output:
                         break
-                    elif "Save the configuration successfully" in output:
-                        break
 
             elif command.strip() == "save":
                 while True:
                     output += comm.recv(65535).decode("utf-8")
                     if "Are you sure to continue?[Y/N]Y" in output:
+                        break
+            elif command.strip() == "Y":
+                while True:
+                    output += comm.recv(65535).decode("utf-8")
+                    if "Save the configuration successfully" in output:
+                        break
+                    elif "failed" in output:
+                        with open("Errors.txt", "a") as storage_file:
+                            storage_file.write(f"failed in saving the reboot for {ip}: {command}\n")
                         break
 
             # Append the output to logs1
