@@ -1,14 +1,11 @@
-#for S5735-L8T4S-A1 and S5735-L8T4X-A1
 import paramiko
-import time
 from datetime import datetime
 import concurrent.futures
 
 start_time = datetime.now()
 
-# Function to execute SSH commands for a single IP
+#Execute SSH
 def execute_ssh(ip):
-    logs = []
     logs1 = ""  # Initialize logs1 to an empty string
     total_errors = 0
 
@@ -19,7 +16,7 @@ def execute_ssh(ip):
         conn.connect(ip, port, username, password)
         comm = conn.invoke_shell()
         comm.send("s 0 t \n")
-
+        # to read and send commands from Command_List.txt
         for command in command_list:
             comm.send(f"{command}\n")
             output = ""
@@ -50,12 +47,12 @@ def execute_ssh(ip):
             # Append the output to logs1
             logs1 += output
 
-        # Now, outside the loop, you can write logs1 to the output file
+        # store log1 data in output.txt file
         with open("output.txt", "a") as f:
             f.write(f"IP: {ip}\n")
             f.write(logs1)
             f.write("*" * 100 + "\n")
-
+    #deal with exceptions
     except paramiko.AuthenticationException as e:
         error_message = f"Authentication failed for {ip}: {e}\n"
         print(error_message)
@@ -68,20 +65,17 @@ def execute_ssh(ip):
             with open("Insufficient_Storage.txt", "a") as storage_file:
                 storage_file.write(error_message)
             total_errors += 1
-        elif "Unable to connect to port 22" in str(e):
-            return total_errors
-        else:
-            error_message = f"Device down for {ip}: {e}\n"
-            print(error_message)
-            with open("Device_down.txt", "a") as device_down_file:
-                device_down_file.write(error_message)
-            total_errors += 1
     except Exception as ex:
-        error_message = f"An error occurred with {ip}: {ex}\n"
+        if "Errno None] Unable to connect to port 22" in str(ex):
+            error_message = f"Can not do SSH on {ip}\n"
+        elif "[WinError 10060] A connection attempt failed" in str(ex):
+            error_message = f"Cannot ping {ip}\n"
+        else:
+            error_message = f"An error occurred with {ip}: {ex}\n"
+
         print(error_message)
         with open("Device_down.txt", "a") as device_down_file:
             device_down_file.write(error_message)
-        total_errors += 1
     finally:
         conn.close()
 
@@ -98,7 +92,6 @@ command_list = c.read().split("\n")
 d = open("Device_List.txt", "r")
 hosts = d.read().split("\n")
 
-# Create files to store errors and success information
 authentication_failed_file = open("Authentication_failed.txt", "w")
 total_ips = len(hosts)
 total_errors = 0
@@ -114,5 +107,6 @@ success_percentage = ((total_ips - total_errors) / total_ips) * 100
 print(f"Total IPs with errors: {total_errors}")
 print(f"Success percentage: {success_percentage:.2f}%")
 
+# To print total time taken
 end_time = datetime.now()
 print(end_time - start_time)
