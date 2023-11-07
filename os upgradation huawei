@@ -4,7 +4,7 @@ import concurrent.futures
 import time
 
 start_time = datetime.now()
-# Define the SSH connection parameters
+#SSH connection parameters
 port = 22
 username = "pankaj"
 password = "radhe@123"
@@ -17,12 +17,7 @@ with open("Command_List.txt", "r") as c:
 with open("Device_List.txt", "r") as d:
     hosts = d.read().split("\n")
 
-# Create files to store error and success information
-authentication_failed_file = open("Authentication_failed.txt", "w")
-total_ips = len(hosts)
-
-
-# Function to execute SSH commands for a single IP
+# Function to execute SSH commands.
 def execute_ssh(ip):
     try:
         print("Try to login:", ip)
@@ -108,18 +103,16 @@ def execute_ssh(ip):
         error_message = f"Authentication failed for {ip}: {e}\n"
         print(error_message)
         authentication_failed_file.write(error_message)
-    except paramiko.SSHException as e:
-        if "Unable to connect to port 22" in str(e):
-            return
-        else:
-            error_message = f"Device down for {ip}: {e}\n"
-            print(error_message)
-            with open("Errors.txt", "a") as device_down_file:
-                device_down_file.write(error_message)
     except Exception as ex:
-        error_message = f"An error occurred with {ip}: {ex}\n"
+        if "Errno None] Unable to connect to port 22" in str(ex):
+            error_message = f"Can not do SSH on {ip}\n"
+        elif "[WinError 10060] A connection attempt failed" in str(ex):
+            error_message = f"Cannot ping {ip}\n"
+        else:
+            error_message = f"An error occurred with {ip}: {ex}\n"
+
         print(error_message)
-        with open("Errors.txt", "a") as device_down_file:
+        with open("Device_down.txt", "a") as device_down_file:
             device_down_file.write(error_message)
     finally:
         conn.close()
@@ -129,6 +122,8 @@ def execute_ssh(ip):
 with concurrent.futures.ThreadPoolExecutor() as executor:
     results = executor.map(execute_ssh, hosts)
 
+authentication_failed_file = open("Authentication_failed.txt", "w")
+total_ips = len(hosts)
 
 # Record the end time and calculate the execution time
 end_time = datetime.now()
