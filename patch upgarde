@@ -5,7 +5,7 @@ import concurrent.futures
 
 start_time = datetime.now()
 
-# Function to execute SSH commands for a single IP
+# Function to execute SSH commands.
 def execute_ssh(ip):
     logs = []
     logs1 = ""
@@ -47,20 +47,17 @@ def execute_ssh(ip):
             with open("Insufficient_Storage.txt", "a") as storage_file:
                 storage_file.write(error_message)
             total_errors += 1
-        elif "Unable to connect to port 22" in str(e):
-            return total_errors
-        else:
-            error_message = f"Device down for {ip}: {e}\n"
-            print(error_message)
-            with open("Device_down.txt", "a") as device_down_file:
-                device_down_file.write(error_message)
-            total_errors += 1
     except Exception as ex:
-        error_message = f"An error occurred with {ip}: {ex}\n"
+        if "Errno None] Unable to connect to port 22" in str(ex):
+            error_message = f"Can not do SSH on {ip}\n"
+        elif "[WinError 10060] A connection attempt failed" in str(ex):
+            error_message = f"Cannot ping {ip}\n"
+        else:
+            error_message = f"An error occurred with {ip}: {ex}\n"
+
         print(error_message)
         with open("Device_down.txt", "a") as device_down_file:
             device_down_file.write(error_message)
-        total_errors += 1
     finally:
         conn.close()
 
@@ -77,7 +74,7 @@ command_list = c.read().split("\n")
 d = open("Device_List.txt", "r")
 hosts = d.read().split("\n")
 
-# Create files to store errors and success information
+# Authentication error store
 authentication_failed_file = open("Authentication_failed.txt", "w")
 total_ips = len(hosts)
 total_errors = 0
