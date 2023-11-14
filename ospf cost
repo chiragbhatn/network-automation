@@ -1,0 +1,127 @@
+import paramiko
+import time
+from datetime import datetime
+import concurrent.futures
+import re
+
+start_time = datetime.now()
+
+# Function to execute SSH commands for a single IP
+def execute_ssh(ip):
+    logs = []
+    logs1 = ""
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+        comm.send("s 0 t \n")
+
+        for command in command_list:
+            comm.send(f"{command}\n")
+            time.sleep(8)
+            output = comm.recv(65535)
+            output = output.decode("utf-8")
+            logs = output.split("xxxxx")
+            logs1 += ''.join(logs)
+
+        # Vlanif interfaces from the output
+        vlanif_interfaces = re.findall(r'\bVlanif\d+\b', logs1)
+
+        # Remove duplicates from the list
+        vlanif_list = list(set(vlanif_interfaces))
+
+        # Print Vlanif interfaces
+        with open("output.txt", "a") as f:
+            f.write(f"IP: {ip}\n")
+            f.write(logs1)
+            f.write("*" * 100 + "\n")  # Add 100 asterisks after the output
+            f.write("Vlanif Interfaces: " + ', '.join(vlanif_list) + "\n")
+            f.write("*" * 100 + "\n")  # Add separator
+
+            # display cu interface
+            for vlanif in vlanif_list:
+                vlanif_command = f"display cu interface {vlanif}\n"
+                comm.send(vlanif_command)
+                time.sleep(8)
+                vlanif_output = comm.recv(65535)
+                vlanif_output = vlanif_output.decode("utf-8")
+                f.write(f"Output for {vlanif}:\n")
+                f.write(vlanif_output)
+                f.write("*" * 50 + "\n")  # Add 50 asterisks after the output
+
+                # Check for OSPF cost 500 in the output
+                if "ospf cost 500" in vlanif_output.lower():
+                    f.write(f"IP: {ip}, {vlanif} Ok\n")
+                    with open("ok.txt", "a") as ok_file:
+                        ok_file.write(f"IP: {ip},  {vlanif} Ok\n")
+                else:
+                    f.write(f"IP: {ip}, {vlanif} Not_Ok\n")
+                    with open("Notok.txt", "a") as not_ok_file:
+                        not_ok_file.write(f"IP: {ip}, {vlanif} Not_Ok\n")
+
+            f.write("*" * 100 + "\n\n")  # Add separator for the next IP
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        authentication_failed_file.write(error_message)
+        total_errors += 1
+
+    except paramiko.SSHException as e:
+        if "No space left on device" in str(e):
+            error_message = f"Insufficient storage space for {ip}: {e}\n"
+            print(error_message)
+            with open("Insufficient_Storage.txt", "a") as storage_file:
+                storage_file.write(error_message)
+            total_errors += 1
+        elif "Unable to connect to port 22" in str(e):
+            return total_errors
+        else:
+            error_message = f"Device down for {ip}: {e}\n"
+            print(error_message)
+            with open("Device_down.txt", "a") as device_down_file:
+                device_down_file.write(error_message)
+            total_errors += 1
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        print(error_message)
+        with open("Device_down.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+    finally:
+        conn.close()
+    return total_errors
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+c = open("Command_List.txt", "r")
+command_list = c.read().split("\n")
+
+d = open("Device_List.txt", "r")
+hosts = d.read().split("\n")
+
+# Create files to store errors and success information
+authentication_failed_file = open("Authentication_failed.txt", "w")
+total_ips = len(hosts)
+total_errors = 0
+
+# Run SSH connections concurrently
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(execute_ssh, hosts)
+    for result in results:
+        total_errors += result
+
+# Calculate success percentage
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+end_time = datetime.now()
+print(end_time - start_time)
