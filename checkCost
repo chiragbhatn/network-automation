@@ -1,0 +1,75 @@
+import paramiko
+import time
+from datetime import datetime
+import concurrent.futures
+from paramiko import ssh_exception
+
+start_time = datetime.now()
+
+
+def execute_ssh(ip, command):  # execute commands in ip,command format
+    logs = ""
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+
+        comm.send(f"{command}\n")
+        time.sleep(2)
+
+        output = comm.recv(65535)
+        output = output.decode("utf-8")
+        logs = output.split("xxxxx")
+
+        with open("output.txt", "a") as f:
+            f.write(f"IP: {ip}\n")
+            f.write(''.join(logs))
+            f.write("\n"+"*" * 100 + "\n")
+
+        if "ospf cost 500" in output:
+            with open("OK.txt", "a") as ok_file:
+                ok_file.write(ip + "\n")
+        else:
+            with open("NotOK.txt", "a") as notok_file:
+                notok_file.write(ip + "\n")
+
+    except paramiko.AuthenticationException as e:
+        print(f"Authentication failed for {ip}: {e}")
+        total_errors += 1
+    except ssh_exception.SSHException as e:
+        print(f"Connection failed for {ip}: {e}")
+        total_errors += 1
+    except Exception as ex:
+        print(f"An error occurred with {ip}: {ex}")
+        total_errors += 1
+    finally:
+        conn.close()
+
+    return total_errors
+
+# configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+with open("input.txt", "r") as input_file:
+    lines = input_file.read().splitlines()
+
+total_ips = len(lines)
+total_errors = 0
+
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(lambda line: execute_ssh(*line.split(',')), lines)
+    for result in results:
+        total_errors += result
+
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+end_time = datetime.now()
+print(end_time - start_time)
