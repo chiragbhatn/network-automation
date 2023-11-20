@@ -33,7 +33,7 @@ def execute_ssh(ip, command):
             portnames_dict[eth_trunk] = []
         portnames_dict[eth_trunk].extend(portname_matches)
 
-        with open("output.txt", "a") as f:  # Append results to a single output file
+        with open("output.txt", "a") as f: 
             f.write(f"IP: {ip}\n")
             f.write(output)
             f.write("*" * 100 + "\n")  # Add 100 asterisks after the output
