@@ -1,0 +1,124 @@
+import paramiko
+import time
+from datetime import datetime
+import concurrent.futures
+import re
+
+start_time = datetime.now()
+
+# Function to execute SSH commands for a single IP
+def execute_ssh(ip, command):
+    portnames_dict = {}
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+        comm.send("s 0 t \n")
+
+        comm.send(f"{command}\n")
+        time.sleep(5)  # Add a 5-second delay for the command
+        output = comm.recv(65535)
+        output = output.decode("utf-8", errors="ignore")
+
+        # Extract PortName from the output using regex
+        portname_matches = re.findall(r'\b(100GE\d+/\d+/\d+|XGigabitEthernet\d+/\d+/\d+|40GE\d+/\d+/\d)\b', output)
+
+        # Organize the result based on Eth-Trunk as keys
+        eth_trunk = command.split()[-1]
+        if eth_trunk not in portnames_dict:
+            portnames_dict[eth_trunk] = []
+        portnames_dict[eth_trunk].extend(portname_matches)
+
+        with open("output.txt", "a") as f:  # Append results to a single output file
+            f.write(f"IP: {ip}\n")
+            f.write(output)
+            print(f"{output}")
+            f.write("*" * 100 + "\n")  # Add 100 asterisks after the output
+
+        print(f"IP: {ip}, Eth-Trunk: {eth_trunk}, PortNames: {portname_matches}")
+
+        # Iterate through portnames and run additional command
+        for portname in portname_matches:
+            transceiver_command = f"display transceiver diagnosis interface {portname}"
+            comm.send(f"{transceiver_command}\n")
+            time.sleep(5)  # Add a 5-second delay for the command
+            transceiver_output = comm.recv(65535)
+            transceiver_output = transceiver_output.decode("utf-8", errors="ignore")
+            with open("output.txt", "a") as f:
+                f.write(f"IP: {ip}, Eth-Trunk {eth_trunk}, PortName: {portname}\n")
+                f.write(transceiver_output)
+                print(f"{transceiver_output}")
+                f.write("*" * 100 + "\n")
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        total_errors += 1
+
+    except paramiko.SSHException as e:
+        error_message = f"Device down for {ip}: {e}\n"
+        with open("Device_down.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        with open("error.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+    finally:
+        conn.close()
+
+    return total_errors, portnames_dict
+
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+# Read data from input.txt
+with open("input.txt", "r") as input_file:
+    input_data = [line.strip().split(",") for line in input_file]
+
+# Create files to store errors and success information
+total_ips = len(input_data)
+total_errors = 0
+
+# Run SSH connections concurrently
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = list(executor.map(lambda x: execute_ssh(x[0], x[1]), input_data))
+
+# Wait for all SSH connections to finish before processing the output
+for result, portnames_dict in results:
+    total_errors += result
+
+# Calculate success percentage
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+# Process the output to generate power.txt
+input_file_name = 'output.txt'
+output_file_name = 'power.txt'
+
+with open(input_file_name, 'r') as input_file:
+    file_content = input_file.read()
+
+sections = file_content.split('*' * 100)
+
+with open(output_file_name, 'w') as output_file:
+    for section in sections:
+        if 'IP:' in section and 'Eth-Trunk' in section and 'RxPower(dBm)' in section:
+            relevant_lines = [line.strip() for line in section.split('\n') if 'IP:' in line or 'RxPower(dBm)' in line]
+            output_file.write('\t'.join(relevant_lines))
+            output_file.write('\n')
+
+print(f"Extraction complete. Check {output_file_name} for the results.")
+
+end_time = datetime.now()
+print(end_time - start_time)
