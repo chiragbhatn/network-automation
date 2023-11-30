@@ -1,0 +1,98 @@
+import paramiko
+import time
+from datetime import datetime
+import concurrent.futures
+import re
+
+start_time = datetime.now()
+
+# Function to execute SSH commands for a single IP
+def execute_ssh(ip, portnames):
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+
+        with open("output.txt", "a") as f:  # Append results to a single output file
+            f.write(f"IP: {ip}\n")
+
+            for portname in portnames:
+                transceiver_command = f"display transceiver diagnosis interface {portname}"
+                comm.send(f"{transceiver_command}\n")
+                time.sleep(2)
+                output = comm.recv(65535)
+                output = output.decode("utf-8", errors="ignore")
+                f.write(output)
+
+                # Use regex to extract RxPower information with optional (lane0)
+                rxpower_match = re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', output)
+                if rxpower_match:
+                    rxpower_value = float(rxpower_match.group(1))
+                    low_threshold = float(rxpower_match.group(2))
+                    high_threshold = float(rxpower_match.group(3))
+                    status = rxpower_match.group(4)
+                    absolute = low_threshold - rxpower_value
+                    if absolute > 0:
+                        flag = "port down"
+                    elif 0 >= absolute > -5:
+                        flag = "red"
+                    elif -5 > absolute >= -10:
+                        flag = "yellow"
+                    elif absolute <= -10:
+                        flag = "green"
+                    print(f"ip:{ip} portname:{portname} RxPower: {rxpower_value}, Low Threshold: {low_threshold}, High Threshold: {high_threshold} Status: {status} absolute:{absolute} flag {flag}")
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        total_errors += 1
+
+    except paramiko.SSHException as e:
+        error_message = f"Device down for {ip}: {e}\n"
+        with open("Device_down.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        with open("error.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+
+    finally:
+        conn.close()
+
+    return total_errors
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+# Read data from input.txt
+with open("input.txt", "r") as input_file:
+    input_data = [line.strip().split(",") for line in input_file]
+
+# Create files to store errors and success information
+total_ips = len(input_data)
+total_errors = 0
+
+# Run SSH connections concurrently
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = list(executor.map(lambda x: execute_ssh(x[0], x[1:]), input_data))
+
+# Wait for all SSH connections to finish before processing the output
+for result in results:
+    total_errors += result
+
+# Calculate success percentage
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+end_time = datetime.now()
+print(end_time - start_time)
