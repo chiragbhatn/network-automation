@@ -3,11 +3,12 @@ import time
 from datetime import datetime
 import concurrent.futures
 import re
+import csv
 
 start_time = datetime.now()
 
 # Function to execute SSH commands for a single IP
-def execute_ssh(ip, portnames):
+def execute_ssh(ip, portnames, csv_writer):
     total_errors = 0
 
     try:
@@ -44,6 +45,11 @@ def execute_ssh(ip, portnames):
                         flag = "yellow"
                     elif absolute <= -10:
                         flag = "green"
+
+                    # Write the data to the CSV file
+                    csv_writer.writerow([ip, portname, rxpower_value, low_threshold, high_threshold, status, absolute, flag])
+
+                    # Print the relevant information in the console
                     print(f"ip:{ip} portname:{portname} RxPower: {rxpower_value}, Low Threshold: {low_threshold}, High Threshold: {high_threshold} Status: {status} absolute:{absolute} flag {flag}")
 
     except paramiko.AuthenticationException as e:
@@ -77,22 +83,29 @@ password = "radhe@123"
 with open("input.txt", "r") as input_file:
     input_data = [line.strip().split(",") for line in input_file]
 
-# Create files to store errors and success information
-total_ips = len(input_data)
-total_errors = 0
+# Create or open the CSV file for writing
+csv_file_path = "power.csv"
+with open(csv_file_path, mode="w", newline="", encoding="utf-8") as csv_file:
+    csv_writer = csv.writer(csv_file)
 
-# Run SSH connections concurrently
-with concurrent.futures.ThreadPoolExecutor() as executor:
-    results = list(executor.map(lambda x: execute_ssh(x[0], x[1:]), input_data))
+    # Write the header row
+    csv_writer.writerow(["IP", "PortName", "RxPower", "Low Threshold", "High Threshold", "Status", "Absolute", "Flag"])
 
-# Wait for all SSH connections to finish before processing the output
-for result in results:
-    total_errors += result
+    # Run SSH connections concurrently
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(lambda x: execute_ssh(x[0], x[1:], csv_writer), input_data))
 
-# Calculate success percentage
-success_percentage = ((total_ips - total_errors) / total_ips) * 100
+    # Wait for all SSH connections to finish before processing the output
+    total_errors = 0
+    for result in results:
+        total_errors += result
+
+# Print the total errors and success percentage
+success_percentage = ((len(input_data) - total_errors) / len(input_data)) * 100
 print(f"Total IPs with errors: {total_errors}")
 print(f"Success percentage: {success_percentage:.2f}%")
 
 end_time = datetime.now()
 print(end_time - start_time)
+
+print(f"Results saved to {csv_file_path}")
