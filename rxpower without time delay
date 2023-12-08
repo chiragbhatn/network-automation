@@ -1,0 +1,139 @@
+import paramiko
+from datetime import datetime
+import concurrent.futures
+import re
+import time
+import csv
+
+start_time = datetime.now()
+
+
+def execute_ssh(ip, portnames, csv_writer):
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+
+        with open("output.txt", "a") as f:
+            f.write(f"IP: {ip}\n")
+
+            for portname in portnames:
+                transceiver_command = f"display transceiver diagnosis interface {portname}"
+                description_command = f"display current-configuration int {portname}"
+                comm.send(f"{transceiver_command}\n")
+
+                while True:
+                    output = comm.recv(65535)
+                    decoded_output = output.decode("utf-8", errors="ignore")
+                    f.write(decoded_output)
+
+                    if "Transceiver does not support diagnostic information" in decoded_output or \
+                            "Wrong parameter found at '^' position" in decoded_output or \
+                            "Voltage" in decoded_output or \
+                            "Too many parameters found at '^' position" in decoded_output or \
+                            "The port has been shut down" in decoded_output or \
+                            "absent" in decoded_output:
+                        break
+
+                # RxPower information with optional (lane0)
+                rxpower_match = re.search( r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)  (?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output)
+
+                if rxpower_match:
+                    rxpower_value = float(rxpower_match.group(1))
+                    low_threshold = float(rxpower_match.group(2))
+                    high_threshold = float(rxpower_match.group(3))
+                    status = rxpower_match.group(4)
+                    absolute = low_threshold - rxpower_value
+                    format_float = "{:.2f}".format(absolute)
+                    if absolute >= -5:
+                        flag = "red"
+                    elif -5 > absolute >= -10:
+                        flag = "yellow"
+                    elif absolute <= -10:
+                        flag = "green"
+
+                    # console
+                    print(
+                        f"ip:{ip} portname:{portname} RxPower: {rxpower_value}, Low Threshold: {low_threshold}, High Threshold: {high_threshold} Status: {status} absolute:{format_float} flag {flag}")
+
+                    comm.send(f"{description_command}\n")
+                    time.sleep(2)
+                    output = comm.recv(65535)
+                    decoded_output = output.decode("utf-8", errors="ignore")
+                    f.write(decoded_output)
+
+                    # data into CSV file
+                    sysname_match = re.search(r'<([^>]+)>', decoded_output)
+                    description_match = re.search(r'(?<=description ).+(?=\n)', decoded_output)
+
+                    sysname = sysname_match.group(1) if sysname_match else ""
+                    description = description_match.group() if description_match else ""
+
+                    csv_writer.writerow(
+                        [ip, portname, sysname, description, rxpower_value, low_threshold, high_threshold, status,
+                         format_float, flag])
+
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        total_errors += 1
+
+    except paramiko.SSHException as e:
+        error_message = f"Device down for {ip}: {e}\n"
+        with open("error.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        with open("error.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+
+    finally:
+        conn.close()
+
+    return total_errors
+
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+# Read data from input.txt
+with open("input.txt", "r") as input_file:
+    input_data = [line.strip().split(",") for line in input_file]
+
+# Create or open the CSV file for writing
+csv_file_path = "power.csv"
+with open(csv_file_path, mode="w", newline="", encoding="utf-8") as csv_file:
+    csv_writer = csv.writer(csv_file)
+
+    csv_writer.writerow(
+        ["IP", "PortName", "Sysname", "Description", "RxPower", "Low Threshold", "High Threshold", "Status", "Absolute",
+         "Flag"])
+
+    # Run SSH connections concurrently
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(lambda x: execute_ssh(x[0], x[1:], csv_writer), input_data))
+
+    # Wait for all SSH connections to finish before processing the output
+    total_errors = 0
+    for result in results:
+        total_errors += result
+
+# Print the total errors and success percentage
+success_percentage = ((len(input_data) - total_errors) / len(input_data)) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
+
+end_time = datetime.now()
+print(end_time - start_time)
+
+print(f"Results saved to {csv_file_path}")
