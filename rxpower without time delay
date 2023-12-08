@@ -35,12 +35,13 @@ def execute_ssh(ip, portnames, csv_writer):
                             "Wrong parameter found at '^' position" in decoded_output or \
                             "Voltage" in decoded_output or \
                             "Too many parameters found at '^' position" in decoded_output or \
+                            "Unrecognized command found" in decoded_output or \
                             "The port has been shut down" in decoded_output or \
                             "absent" in decoded_output:
                         break
 
                 # RxPower information with optional (lane0)
-                rxpower_match = re.search( r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)  (?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output)
+                rxpower_match = re.search( r'RxPower\(dBm\)\s+(-?\d+\.\d+)(?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+) (?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output) or re.search(r'RxPower\(dBm\)\s+(-?\d+\.\d+)  (?:\(lane0\))?\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(\w+)', decoded_output)
 
                 if rxpower_match:
                     rxpower_value = float(rxpower_match.group(1))
