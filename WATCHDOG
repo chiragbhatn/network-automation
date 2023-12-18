@@ -1,0 +1,97 @@
+import paramiko
+import re
+import time
+from datetime import datetime
+import concurrent.futures
+from paramiko import ssh_exception  # Import the SSHException module
+
+
+# Function to extract WATCHDOG times
+def extract_watchdog_times(log_text):
+    pattern = r"WATCHDOG\s+(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})"
+    return re.findall(pattern, log_text)
+
+
+# Function to execute SSH commands for a single IP
+def execute_ssh(ip):
+    logs = []
+    logs1 = ""
+    total_errors = 0
+
+    try:
+        print("Try to login:", ip)
+        conn = paramiko.SSHClient()
+        conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        conn.connect(ip, port, username, password)
+        comm = conn.invoke_shell()
+        comm.send("s 0 t \n")
+
+        for command in command_list:
+            comm.send(f"{command}\n")
+            time.sleep(5)  # Add a 2-second delay for all commands
+            output = comm.recv(65535)
+            output = output.decode("utf-8")
+            logs = output.split("xxxxx")
+            logs1 += ''.join(logs)
+
+        with open("output.txt", "a") as output_file:
+            output_file.write(f"IP: {ip}\n")
+            output_file.write(logs1)
+            output_file.write("*" * 100 + "\n")  # Add 100 asterisks after the output
+
+        watchdog_times = extract_watchdog_times(logs1)
+        if watchdog_times:
+            with open("watchdog_times.txt", "a") as watchdog_file:
+                for watchdog_time in watchdog_times:
+                    watchdog_file.write(f"IP: {ip}, WATCHDOG Time: {watchdog_time}\n")
+
+    except paramiko.AuthenticationException as e:
+        error_message = f"Authentication failed for {ip}: {e}\n"
+        print(error_message)
+        with open("Authentication_failed.txt", "a") as auth_file:
+            auth_file.write(error_message)
+        total_errors += 1
+    except ssh_exception.SSHException as e:
+        error_message = f"Connection failed for {ip}: {e}\n"
+        print(error_message)
+        with open("Authentication_failed.txt", "a") as auth_file:
+            auth_file.write(error_message)
+        total_errors += 1
+    except Exception as ex:
+        error_message = f"An error occurred with {ip}: {ex}\n"
+        print(error_message)
+        with open("Device_down.txt", "a") as device_down_file:
+            device_down_file.write(error_message)
+        total_errors += 1
+    finally:
+        if conn:
+            conn.close()
+
+    return total_errors
+
+# Configuration
+port = 22
+username = "pankaj"
+password = "radhe@123"
+
+c = open("Command_List.txt", "r")
+command_list = c.read().split("\n")
+c.close()
+
+d = open("Device_List.txt", "r")
+hosts = d.read().split("\n")
+d.close()
+
+total_ips = len(hosts)
+total_errors = 0
+
+# Run SSH connections concurrently
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(execute_ssh, hosts)
+    for result in results:
+        total_errors += result
+
+# Calculate success percentage
+success_percentage = ((total_ips - total_errors) / total_ips) * 100
+print(f"Total IPs with errors: {total_errors}")
+print(f"Success percentage: {success_percentage:.2f}%")
